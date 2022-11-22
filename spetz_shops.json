@@ -1,0 +1,31 @@
+{
+    "simferopol": {
+        "longitude" : 44.978163,  
+        "latitude"  : 34.142269
+    },
+
+    "evpatoria": {
+        "longitude" : 45.211126,
+        "latitude"  : 33.381881
+    },
+
+    "kerch": {
+        "longitude" : 45.359220,
+        "latitude"  : 36.460811
+    },
+
+    "krasnoperekopsk": {
+        "longitude" : 45.953800,
+        "latitude"  : 33.791171
+    },
+
+    "sudak": {
+        "longitude" :44.862696, 
+        "latitude"  : 4.990628
+    },
+
+    "feodosia": {
+        "longitude" : 45.059576,  
+        "latitude"  : 35.369904
+    }
+}
