@@ -1,4 +1,3 @@
-
 function distance(lat1,lng1,lat2,lng2) {
     const plq = new YMaps.GeoCoordSystem();
     let rasto = plq.distance(new YMaps.GeoPoint(lat1,lng1), new YMaps.GeoPoint(lat2,lng2));
@@ -52,6 +51,7 @@ function getNearestShop(clientCoordinates) {
 // выпадающий списко адресов
 
 function init() {
+    const borderCrimea = [[46.080873, 32.520030], [44.091149, 36.246333]] // гранцы Крыма
     const suggestView1 = new ymaps.SuggestView('suggest1',
         { 
             provider: {
@@ -63,7 +63,7 @@ function init() {
                    return serchFilter
                 }
             },
-            boundedBy: [[46.080873, 32.520030], [44.091149, 36.246333]],
+            boundedBy: borderCrimea,
             offset: [20, 30],
             results: 10,
             width :400,
@@ -85,7 +85,52 @@ function init() {
             })
             .then(res => console.log(res / 1000))
     })
+
+    var myMap = new ymaps.Map('map', {
+        center: [44.948227, 34.100264],
+        zoom: 9,
+        controls: []
+    });
+
+    var multiRoute = new ymaps.multiRouter.MultiRoute({   
+        // Точки маршрута.
+        // Обязательное поле. 
+        referencePoints: [
+            'Симферополь',
+            'Евпатория',
+            'Черноморское',
+            'Новоселовское'
+            
+        ]
+    }, {
+        // Автоматически устанавливать границы карты так,
+        // чтобы маршрут был виден целиком.
+        boundsAutoApply: true
+    }); 
+
+    multiRoute.model.events.add('requestsuccess', function() {
+        // Получение ссылки на активный маршрут.
+        var activeRoute = multiRoute.getActiveRoute();
+        // Вывод информации о маршруте.
+        console.log("Длина: " + activeRoute.properties.get("distance").text);
+        console.log("Время прохождения: " + activeRoute.properties.get("duration").text);
+        // Для автомобильных маршрутов можно вывести 
+        // информацию о перекрытых участках.
+        if (activeRoute.properties.get("blocked")) {
+            console.log("На маршруте имеются участки с перекрытыми дорогами.");
+        }
+    });
+
+    myMap.geoObjects.add(multiRoute);
+
+
+
 }
 
 ymaps.ready(init);
+
+
+
+
+
 
