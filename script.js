@@ -32,7 +32,7 @@ function getNearestShop(clientCoordinates) {
         const nearestShop = citiesCoordinates.reduce((acc, {longitude,latitude}) => {
             const [clientLatitude, clientLongitude] = clientCoordinates
             const getDistance = distance(longitude,latitude, clientLongitude, clientLatitude) 
-            console.log(acc)
+            // console.log(acc)
             if(!acc) return getDistance
 
             if(acc > getDistance) {
@@ -47,6 +47,97 @@ function getNearestShop(clientCoordinates) {
 
     return shopsList
 }
+
+function getRoutes () {
+    // получаем данные о маршрутах
+    const routes = fetch('routes.json')
+    
+    return routes
+}
+
+function buildRoute (routeList, myMap, ...adresDelivery) {
+    // получаем адрес доставки, меняем местами долготоу и широту так надо для яндекса) 
+    const adress = adresDelivery.flat().reverse().join(', ')
+    // строим маршрут с учетом нового адресса доставки
+    return routeList().then(res => res.json())
+    .then(res => {
+        
+        const routesList = Object.values(res)
+        
+
+        const routes =  routesList.map(item => {
+            
+            const adressList = item.adressList
+            const oldDuration = item.duration // длина маршрута до добавления нового пункта
+            
+            adressList.push(adress)
+
+            const newRoute =  new ymaps.multiRouter.MultiRoute ({ 
+                referencePoints: adressList
+            }) 
+
+            myMap.geoObjects.add(newRoute)
+
+            return {oldDuration: oldDuration, newRoute: newRoute}
+          
+        })
+
+        return routes // возвращаем построенный маршрут 
+    })   
+}
+
+// 
+
+function getOptimalRoute(routesList) {
+    // перебираем маршруты
+        //  вычисляем растояние
+        // сравниваем с исходными данными
+        //  надодим маршрут с минимальным увеличением растояния
+        // возвращаем его
+        routesList
+        .then(res => {
+            console.log(res)
+
+            const optimalRoutes = Promise.all(
+                res.map(({oldDuration, newRoute}) => {
+
+                    const getDistance = new Promise((res) => {
+
+                        newRoute.model.events.add('requestsuccess', function() {
+                            res(newRoute.getActiveRoute())     
+                        })
+                    })
+                    
+                    .then(res => {
+                        console.log(res)
+                        const newDistance = res.properties.get("distance").value
+                        console.log(res.properties.get("distance"))
+                        return [oldDuration, newDistance]
+                    }) // время маршрута в  
+                    .then(res => {
+                        console.log(res) // тут верные данные
+                        return res
+                    })
+
+                    
+                    
+                })
+            )
+
+            
+            optimalRoutes.then(res => console.log(res))
+        })
+        // .then( res => {
+        //     console.log(res)
+        //     const allRouts = Promise.all(res)
+        //     allRouts.then(res => console.log(res))
+            
+        // })
+   
+}
+
+
+
 
 // выпадающий списко адресов
 
@@ -78,12 +169,14 @@ function init() {
                 return splitData
             })
             .then((res) => {
+                getOptimalRoute(buildRoute(getRoutes,myMap, res)) 
+
                 return  [clientPos1, clientPos2] = res
             })
             .then(([pos1, pos2]) => {
               return  getNearestShop([pos1, pos2])
             })
-            .then(res => console.log(res / 1000))
+            // .then(res => console.log(res / 1000))
     })
 
     var myMap = new ymaps.Map('map', {
@@ -92,36 +185,11 @@ function init() {
         controls: []
     });
 
-    var multiRoute = new ymaps.multiRouter.MultiRoute({   
-        // Точки маршрута.
-        // Обязательное поле. 
-        referencePoints: [
-            'Симферополь',
-            'Евпатория',
-            'Черноморское',
-            'Новоселовское'
-            
-        ]
-    }, {
-        // Автоматически устанавливать границы карты так,
-        // чтобы маршрут был виден целиком.
-        boundsAutoApply: true
-    }); 
+    
+    // конструктор маршрутов
 
-    multiRoute.model.events.add('requestsuccess', function() {
-        // Получение ссылки на активный маршрут.
-        var activeRoute = multiRoute.getActiveRoute();
-        // Вывод информации о маршруте.
-        console.log("Длина: " + activeRoute.properties.get("distance").text);
-        console.log("Время прохождения: " + activeRoute.properties.get("duration").text);
-        // Для автомобильных маршрутов можно вывести 
-        // информацию о перекрытых участках.
-        if (activeRoute.properties.get("blocked")) {
-            console.log("На маршруте имеются участки с перекрытыми дорогами.");
-        }
-    });
+    
 
-    myMap.geoObjects.add(multiRoute);
 
 
 
