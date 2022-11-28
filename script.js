@@ -19,8 +19,8 @@ function getShopsCoordinates () {
 }
 
 // получаем ближайший магазин к клиенту
-function getNearestShop(clientCoordinates) {
-    const shopsList = getShopsCoordinates ()
+async function getNearestShop(clientCoordinates) {
+    const shopsList = await getShopsCoordinates ()
     .then(res => {
        const data = res.json()
 
@@ -32,7 +32,7 @@ function getNearestShop(clientCoordinates) {
         const nearestShop = citiesCoordinates.reduce((acc, {longitude,latitude}) => {
             const [clientLatitude, clientLongitude] = clientCoordinates
             const getDistance = distance(longitude,latitude, clientLongitude, clientLatitude) 
-            // console.log(acc)
+            
             if(!acc) return getDistance
 
             if(acc > getDistance) {
@@ -55,7 +55,7 @@ function getRoutes () {
     return routes
 }
 
-function buildRoute (routeList, myMap, ...adresDelivery) {
+function buildRoute (routeList, myMap, adresDelivery) {
     // получаем адрес доставки, меняем местами долготоу и широту так надо для яндекса) 
     const adress = adresDelivery.flat().reverse().join(', ')
     // строим маршрут с учетом нового адресса доставки
@@ -64,7 +64,6 @@ function buildRoute (routeList, myMap, ...adresDelivery) {
         
         const routesList = Object.values(res)
         
-
         const routes =  routesList.map(item => {
             
             const adressList = item.adressList
@@ -84,6 +83,7 @@ function buildRoute (routeList, myMap, ...adresDelivery) {
 
         return routes // возвращаем построенный маршрут 
     })   
+    
 }
 
 // 
@@ -94,50 +94,46 @@ function getOptimalRoute(routesList) {
         // сравниваем с исходными данными
         //  надодим маршрут с минимальным увеличением растояния
         // возвращаем его
-        routesList
-        .then(res => {
-            console.log(res)
+        console.log(routesList) // массив!
 
-            const optimalRoutes = Promise.all(
-                res.map(({oldDuration, newRoute}) => {
+        const optimalRoutes = Promise.all(
+            routesList.map(({oldDuration, newRoute}) => {
 
-                    const getDistance = new Promise((res) => {
+                const getDistance = new Promise((res) => {
 
-                        newRoute.model.events.add('requestsuccess', function() {
-                            res(newRoute.getActiveRoute())     
-                        })
+                    newRoute.model.events.add('requestsuccess', function() {
+                        res(newRoute.getActiveRoute())     
                     })
-                    
-                    .then(res => {
-                        console.log(res)
-                        const newDistance = res.properties.get("distance").value
-                        console.log(res.properties.get("distance"))
-                        return [oldDuration, newDistance]
-                    }) // время маршрута в  
-                    .then(res => {
-                        console.log(res) // тут верные данные
-                        return res
-                    })
-
-                    
-                    
                 })
-            )
+                
+                .then(res => {
+                    const newDistance = res.properties.get("distance").value
+                    const newDistanceKm = Math.ceil(newDistance / 1000) 
+                    console.log(res.properties.get("distance"))
+                    return [oldDuration, newDistanceKm]
+                }) 
+            
+                return getDistance
+            })
+        )
+        .then(res => {
 
-            
-            optimalRoutes.then(res => console.log(res))
+            // получаем расстояние на которое изменились маршруты
+            const distanceModification = res.map(([oldDuration, newDistanceKm])=> {
+                return newDistanceKm - oldDuration
+            })
+
+            return distanceModification
+        }) 
+        .then(res => {
+            // находим минимальное изменение маршрута
+            return Math.min(...res)
         })
-        // .then( res => {
-        //     console.log(res)
-        //     const allRouts = Promise.all(res)
-        //     allRouts.then(res => console.log(res))
-            
-        // })
+
+        return optimalRoutes
+        
    
 }
-
-
-
 
 // выпадающий списко адресов
 
@@ -168,15 +164,21 @@ function init() {
                 const splitData =  data.split(' ')
                 return splitData
             })
-            .then((res) => {
-                getOptimalRoute(buildRoute(getRoutes,myMap, res)) 
+            .then(async (res) => {
+                const [pos1, pos2] = res
+                const distanceNearestShop = await getNearestShop([pos1, pos2]) / 1000
+                const minDistance =  getOptimalRoute( await buildRoute(getRoutes,myMap, res)) 
 
-                return  [clientPos1, clientPos2] = res
+                if(distanceNearestShop / 1000 > 50) {
+                    return minDistance    
+                }
+                return distanceNearestShop
+            
             })
-            .then(([pos1, pos2]) => {
-              return  getNearestShop([pos1, pos2])
+            .then((res) => {
+                console.log('Растояние оплачиваемой доставки' + res)
+
             })
-            // .then(res => console.log(res / 1000))
     })
 
     var myMap = new ymaps.Map('map', {
@@ -184,14 +186,6 @@ function init() {
         zoom: 9,
         controls: []
     });
-
-    
-    // конструктор маршрутов
-
-    
-
-
-
 
 }
 
