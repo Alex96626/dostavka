@@ -14,6 +14,11 @@ function getClientCoordinates (adress) {
 
 function getShopsCoordinates () {
     const coordonates = fetch('spetz_shops.json')
+    .then (res =>{
+        const data = res.json()
+        return data
+    } )
+    
 
     return coordonates
 }
@@ -21,72 +26,61 @@ function getShopsCoordinates () {
 // получаем ближайший магазин к клиенту
 async function getNearestShop(clientCoordinates) {
     const shopsList = await getShopsCoordinates ()
-    .then(res => {
-       const data = res.json()
+    const citiesCoordinates = Object.values(shopsList)
 
-       return data
-    })
-    .then((res) => {
-        const citiesCoordinates = Object.values(res)
+    const nearestShop = citiesCoordinates.reduce((acc, {longitude,latitude}) => {
+        const [clientLatitude, clientLongitude] = clientCoordinates
+        const getDistance = distance(longitude,latitude, clientLongitude, clientLatitude) 
+        
+        if(!acc) return getDistance
 
-        const nearestShop = citiesCoordinates.reduce((acc, {longitude,latitude}) => {
-            const [clientLatitude, clientLongitude] = clientCoordinates
-            const getDistance = distance(longitude,latitude, clientLongitude, clientLatitude) 
-            
-            if(!acc) return getDistance
+        if(acc > getDistance) {
+            acc = getDistance
+        }
 
-            if(acc > getDistance) {
-                acc = getDistance
-            }
+        return acc
+    }, 0)
 
-            return acc
-        }, 0)
-
-        return nearestShop
-    })
-
-    return shopsList
+    return nearestShop
 }
 
 function getRoutes () {
     // получаем данные о маршрутах
     const routes = fetch('routes.json')
+    .then(res => {
+        const data = res.json()
+        return data
+    })
     
     return routes
 }
 
-function buildRoute (routeList, myMap, adresDelivery) {
+async function buildRoute (routeList, myMap, adresDelivery) {
     // получаем адрес доставки, меняем местами долготоу и широту так надо для яндекса) 
     const adress = adresDelivery.flat().reverse().join(', ')
-    // строим маршрут с учетом нового адресса доставки
-    return routeList().then(res => res.json())
-    .then(res => {
+    const routes = await routeList()
+    const routesList = Object.values(routes)
+
+    const routesInfo =  routesList.map(item => {
         
-        const routesList = Object.values(res)
+        const adressList = item.adressList
+        const oldDuration = item.duration // длина маршрута до добавления нового пункта
         
-        const routes =  routesList.map(item => {
-            
-            const adressList = item.adressList
-            const oldDuration = item.duration // длина маршрута до добавления нового пункта
-            
-            adressList.push(adress)
+        adressList.push(adress)
 
-            const newRoute =  new ymaps.multiRouter.MultiRoute ({ 
-                referencePoints: adressList
-            }) 
+        const newRoute =  new ymaps.multiRouter.MultiRoute ({ 
+            referencePoints: adressList
+        }) // перестроенныенный маршрут с добавление точки доставки
 
-            myMap.geoObjects.add(newRoute)
+        myMap.geoObjects.add(newRoute)
 
-            return {oldDuration: oldDuration, newRoute: newRoute}
-          
-        })
+        return {oldDuration: oldDuration, newRoute: newRoute}
+        
+    })
 
-        return routes // возвращаем построенный маршрут 
-    })   
+    return routesInfo // возвращаем построенный маршрут 
     
 }
-
-// 
 
 function getOptimalRoute(routesList) {
     // перебираем маршруты
@@ -94,7 +88,6 @@ function getOptimalRoute(routesList) {
         // сравниваем с исходными данными
         //  надодим маршрут с минимальным увеличением растояния
         // возвращаем его
-        console.log(routesList) // массив!
 
         const optimalRoutes = Promise.all(
             routesList.map(({oldDuration, newRoute}) => {
@@ -157,7 +150,7 @@ function init() {
         }
     ); 
     suggestView1.events.add('select', (e) => {
-        const result =  getClientCoordinates (e.get('item').value)
+       const result =  getClientCoordinates (e.get('item').value)
             .then(res => res.json())
             .then((res) => {
                 const data =  res.response['GeoObjectCollection']['featureMember'][0]['GeoObject']['Point']['pos']
@@ -167,7 +160,7 @@ function init() {
             .then(async (res) => {
                 const [pos1, pos2] = res
                 const distanceNearestShop = await getNearestShop([pos1, pos2]) / 1000
-                const minDistance =  getOptimalRoute( await buildRoute(getRoutes,myMap, res)) 
+                const minDistance =  getOptimalRoute( await buildRoute( getRoutes,myMap, res)) 
 
                 if(distanceNearestShop / 1000 > 50) {
                     return minDistance    
