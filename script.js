@@ -100,6 +100,7 @@ function getOptimalRoute(routesList) {
                 })
                 
                 .then(res => {
+                    console.log(res.getPixelBounds())
                     const newDistance = res.properties.get("distance").value
                     const newDistanceKm = Math.ceil(newDistance / 1000) 
                     console.log(res.properties.get("distance"))
@@ -149,12 +150,14 @@ function init() {
             width :400,
         }
     ); 
+
     suggestView1.events.add('select', (e) => {
+           
        const result =  getClientCoordinates (e.get('item').value)
             .then(res => res.json())
             .then((res) => {
-                const data =  res.response['GeoObjectCollection']['featureMember'][0]['GeoObject']['Point']['pos']
-                const splitData =  data.split(' ')
+                const data = res.response['GeoObjectCollection']['featureMember'][0]['GeoObject']['Point']['pos']
+                const splitData = data.split(' ')
                 return splitData
             })
             .then(async (res) => {
@@ -168,10 +171,38 @@ function init() {
                 return distanceNearestShop
             
             })
-            .then((res) => {
-                console.log('Растояние оплачиваемой доставки' + res)
-
+            .then((res)=> {
+                console.log('Растояние оплачиваемой доставки' + res) 
             })
+    })
+
+    const suggest = document.querySelector('#suggest1')
+
+    suggest.addEventListener('keydown', (e) => {
+        if(e.code !== 'NumpadEnter') return
+        const result =  getClientCoordinates (e.target.value)
+        .then(res => res.json())
+        .then((res) => {
+            const data =  res.response['GeoObjectCollection']['featureMember'][0]['GeoObject']['Point']['pos']
+            const splitData =  data.split(' ')
+            return splitData
+        })
+        .then(async (res) => {
+            const [pos1, pos2] = res
+            const distanceNearestShop = await getNearestShop([pos1, pos2]) / 1000
+            const minDistance =  getOptimalRoute( await buildRoute( getRoutes,myMap, res)) 
+
+            if(distanceNearestShop / 1000 > 50) {
+                return minDistance    
+            }
+            return distanceNearestShop
+        
+        })
+        .then((res)=> {
+            console.log('Растояние оплачиваемой доставки' + res) 
+           
+        })
+
     })
 
     var myMap = new ymaps.Map('map', {
@@ -182,7 +213,7 @@ function init() {
 
 }
 
-ymaps.ready(init);
+ymaps.ready(init)
 
 
 
