@@ -172,7 +172,7 @@ function init() {
             
             })
             .then((res)=> {
-                console.log('Растояние оплачиваемой доставки' + res) 
+                alert('Растояние оплачиваемой доставки' + Math.round(res))  
             })
     })
 
