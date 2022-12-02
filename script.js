@@ -1,4 +1,3 @@
-
 function distance(lat1,lng1,lat2,lng2) {
     const plq = new YMaps.GeoCoordSystem();
     let rasto = plq.distance(new YMaps.GeoPoint(lat1,lng1), new YMaps.GeoPoint(lat2,lng2));
@@ -15,43 +14,125 @@ function getClientCoordinates (adress) {
 
 function getShopsCoordinates () {
     const coordonates = fetch('spetz_shops.json')
+    .then (res =>{
+        const data = res.json()
+        return data
+    } )
+    
 
     return coordonates
 }
 
 // получаем ближайший магазин к клиенту
-function getNearestShop(clientCoordinates) {
-    const shopsList = getShopsCoordinates ()
+async function getNearestShop(clientCoordinates) {
+    const shopsList = await getShopsCoordinates ()
+    const citiesCoordinates = Object.values(shopsList)
+
+    const nearestShop = citiesCoordinates.reduce((acc, {longitude,latitude}) => {
+        const [clientLatitude, clientLongitude] = clientCoordinates
+        const getDistance = distance(longitude,latitude, clientLongitude, clientLatitude) 
+        
+        if(!acc) return getDistance
+
+        if(acc > getDistance) {
+            acc = getDistance
+        }
+
+        return acc
+    }, 0)
+
+    return nearestShop
+}
+
+function getRoutes () {
+    // получаем данные о маршрутах
+    const routes = fetch('routes.json')
     .then(res => {
-       const data = res.json()
-
-       return data
+        const data = res.json()
+        return data
     })
-    .then((res) => {
-        const citiesCoordinates = Object.values(res)
+    
+    return routes
+}
 
-        const nearestShop = citiesCoordinates.reduce((acc, {longitude,latitude}) => {
-            const [clientLatitude, clientLongitude] = clientCoordinates
-            const getDistance = distance(longitude,latitude, clientLongitude, clientLatitude) 
-            console.log(acc)
-            if(!acc) return getDistance
+async function buildRoute (routeList, myMap, adresDelivery) {
+    // получаем адрес доставки, меняем местами долготоу и широту так надо для яндекса) 
+    const adress = adresDelivery.flat().reverse().join(', ')
+    const routes = await routeList()
+    const routesList = Object.values(routes)
 
-            if(acc > getDistance) {
-                acc = getDistance
-            }
+    const routesInfo =  routesList.map(item => {
+        
+        const adressList = item.adressList
+        const oldDuration = item.duration // длина маршрута до добавления нового пункта
+        
+        adressList.push(adress)
 
-            return acc
-        }, 0)
+        const newRoute =  new ymaps.multiRouter.MultiRoute ({ 
+            referencePoints: adressList
+        }) // перестроенныенный маршрут с добавление точки доставки
 
-        return nearestShop
+        myMap.geoObjects.add(newRoute)
+
+        return {oldDuration: oldDuration, newRoute: newRoute}
+        
     })
 
-    return shopsList
+    return routesInfo // возвращаем построенный маршрут 
+    
+}
+
+function getOptimalRoute(routesList) {
+    // перебираем маршруты
+        //  вычисляем растояние
+        // сравниваем с исходными данными
+        //  надодим маршрут с минимальным увеличением растояния
+        // возвращаем его
+
+        const optimalRoutes = Promise.all(
+            routesList.map(({oldDuration, newRoute}) => {
+
+                const getDistance = new Promise((res) => {
+
+                    newRoute.model.events.add('requestsuccess', function() {
+                        res(newRoute.getActiveRoute())     
+                    })
+                })
+                
+                .then(res => {
+                    console.log(res.getPixelBounds())
+                    const newDistance = res.properties.get("distance").value
+                    const newDistanceKm = Math.ceil(newDistance / 1000) 
+                    console.log(res.properties.get("distance"))
+                    return [oldDuration, newDistanceKm]
+                }) 
+            
+                return getDistance
+            })
+        )
+        .then(res => {
+
+            // получаем расстояние на которое изменились маршруты
+            const distanceModification = res.map(([oldDuration, newDistanceKm])=> {
+                return newDistanceKm - oldDuration
+            })
+
+            return distanceModification
+        }) 
+        .then(res => {
+            // находим минимальное изменение маршрута
+            return Math.min(...res)
+        })
+
+        return optimalRoutes
+        
+   
 }
 
 // выпадающий списко адресов
 
 function init() {
+    const borderCrimea = [[46.080873, 32.520030], [44.091149, 36.246333]] // гранцы Крыма
     const suggestView1 = new ymaps.SuggestView('suggest1',
         { 
             provider: {
@@ -63,29 +144,79 @@ function init() {
                    return serchFilter
                 }
             },
-            boundedBy: [[46.080873, 32.520030], [44.091149, 36.246333]],
+            boundedBy: borderCrimea,
             offset: [20, 30],
             results: 10,
             width :400,
         }
     ); 
+
     suggestView1.events.add('select', (e) => {
-        const result =  getClientCoordinates (e.get('item').value)
+           
+       const result =  getClientCoordinates (e.get('item').value)
             .then(res => res.json())
             .then((res) => {
-                const data =  res.response['GeoObjectCollection']['featureMember'][0]['GeoObject']['Point']['pos']
-                const splitData =  data.split(' ')
+                const data = res.response['GeoObjectCollection']['featureMember'][0]['GeoObject']['Point']['pos']
+                const splitData = data.split(' ')
                 return splitData
             })
-            .then((res) => {
-                return  [clientPos1, clientPos2] = res
+            .then(async (res) => {
+                const [pos1, pos2] = res
+                const distanceNearestShop = await getNearestShop([pos1, pos2]) / 1000
+                const minDistance =  getOptimalRoute( await buildRoute( getRoutes,myMap, res)) 
+
+                if(distanceNearestShop / 1000 > 50) {
+                    return minDistance    
+                }
+                return distanceNearestShop
+            
             })
-            .then(([pos1, pos2]) => {
-              return  getNearestShop([pos1, pos2])
+            .then((res)=> {
+                console.log('Растояние оплачиваемой доставки' + res) 
             })
-            .then(res => console.log(res / 1000))
     })
+
+    const suggest = document.querySelector('#suggest1')
+
+    suggest.addEventListener('keydown', (e) => {
+        if(e.code !== 'NumpadEnter') return
+        const result =  getClientCoordinates (e.target.value)
+        .then(res => res.json())
+        .then((res) => {
+            const data =  res.response['GeoObjectCollection']['featureMember'][0]['GeoObject']['Point']['pos']
+            const splitData =  data.split(' ')
+            return splitData
+        })
+        .then(async (res) => {
+            const [pos1, pos2] = res
+            const distanceNearestShop = await getNearestShop([pos1, pos2]) / 1000
+            const minDistance =  getOptimalRoute( await buildRoute( getRoutes,myMap, res)) 
+
+            if(distanceNearestShop / 1000 > 50) {
+                return minDistance    
+            }
+            return distanceNearestShop
+        
+        })
+        .then((res)=> {
+           alert('Растояние оплачиваемой доставки' + Math.round(res)) 
+           
+        })
+
+    })
+
+    var myMap = new ymaps.Map('map', {
+        center: [44.948227, 34.100264],
+        zoom: 9,
+        controls: []
+    });
+
 }
 
-ymaps.ready(init);
+ymaps.ready(init)
+
+
+
+
+
 
