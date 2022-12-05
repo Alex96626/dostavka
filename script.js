@@ -71,8 +71,8 @@ async function buildRoute (routeList, myMap, adresDelivery) {
         const newRoute =  new ymaps.multiRouter.MultiRoute ({ 
             referencePoints: adressList
         }) // перестроенныенный маршрут с добавление точки доставки
-
-        myMap.geoObjects.add(newRoute)
+        // console.log(newRoute)
+        // myMap.geoObjects.add(newRoute)
 
         return {oldDuration: oldDuration, newRoute: newRoute}
         
@@ -82,7 +82,7 @@ async function buildRoute (routeList, myMap, adresDelivery) {
     
 }
 
-function getOptimalRoute(routesList) {
+function getOptimalRoute(routesList, myMap) {
     // перебираем маршруты
         //  вычисляем растояние
         // сравниваем с исходными данными
@@ -100,30 +100,50 @@ function getOptimalRoute(routesList) {
                 })
                 
                 .then(res => {
-                    console.log(res.getPixelBounds())
+                    console.log(res)
+                    // myMap.geoObjects.add(newRoute)
                     const newDistance = res.properties.get("distance").value
                     const newDistanceKm = Math.ceil(newDistance / 1000) 
                     console.log(res.properties.get("distance"))
-                    return [oldDuration, newDistanceKm]
+                    console.log(oldDuration + ' ' + newDistance)
+                    return {ds : [oldDuration, newDistanceKm], rout: res}
                 }) 
-            
+                
                 return getDistance
             })
         )
-        .then(res => {
-
+        .then((res) => {
+            console.log(res)
+            // const [ds, rout] = res
+            
+            // debugger
             // получаем расстояние на которое изменились маршруты
-            const distanceModification = res.map(([oldDuration, newDistanceKm])=> {
-                return newDistanceKm - oldDuration
+            const distanceModification = res.map(({ds, rout})=> {
+                
+                const [oldDuration, newDistanceKm] = ds
+                return {ds: newDistanceKm - oldDuration, rout: rout}
             })
+
+            // const distanceModification = res.map(([oldDuration, newDistanceKm])=> {
+            //     return newDistanceKm - oldDuration
+            // })
 
             return distanceModification
         }) 
-        .then(res => {
+        .then((res) => {
+            // const {dist, rout} = res
+            // debugger
             // находим минимальное изменение маршрута
-            return Math.min(...res)
+            const distList = res.map(item => item.ds)
+            const getRout = res.find( item => {
+                if(item.ds === Math.min(...distList)) return item
+            })
+            // return Math.min(...res)
+            myMap.geoObjects.add(getRout.rout)
+            return getRout
         })
-
+        // console.log(optimalRoutes)
+        // debugger
         return optimalRoutes
         
    
@@ -163,7 +183,7 @@ function init() {
             .then(async (res) => {
                 const [pos1, pos2] = res
                 const distanceNearestShop = await getNearestShop([pos1, pos2]) / 1000
-                const minDistance =  getOptimalRoute( await buildRoute( getRoutes,myMap, res)) 
+                const minDistance =  getOptimalRoute( await buildRoute( getRoutes,myMap, res), myMap) 
 
                 if(distanceNearestShop / 1000 > 50) {
                     return minDistance    
@@ -190,7 +210,7 @@ function init() {
         .then(async (res) => {
             const [pos1, pos2] = res
             const distanceNearestShop = await getNearestShop([pos1, pos2]) / 1000
-            const minDistance =  getOptimalRoute( await buildRoute( getRoutes,myMap, res)) 
+            const minDistance =  getOptimalRoute( await buildRoute( getRoutes,myMap, res), myMap) 
 
             if(distanceNearestShop / 1000 > 50) {
                 return minDistance    
